@@ -1,13 +1,11 @@
-#include <algorithm>
-#include <fstream>
-#include <iostream>
-#include <map>
+#include "cliques.cuh"
 
-Graph::Graph(string filename) {
+void readGraph(string filename, vector<vector<int>> &adj_list, int &num_vertices){
   // Abre o arquivo de edges
   ifstream file(filename);
   map<int, int> vertex_map;
-  int num_vertices = 0;
+  vector<int> vertices;
+  num_vertices = 0;
 
   int v, w;
   // Le uma aresta do arquivo
@@ -16,7 +14,7 @@ Graph::Graph(string filename) {
     // Caso o vertice v nao esteja no map, adiciona ele
     if (vertex_map.find(v) == vertex_map.end()) {
       // Adiciona o vertice no vetor de vertices
-      this->vertices.push_back(num_vertices);
+      vertices.push_back(num_vertices);
 
       // Adiciona o vertice no map
       vertex_map[v] = num_vertices++;
@@ -25,102 +23,105 @@ Graph::Graph(string filename) {
     // Caso o vertice w nao esteja no map, adiciona ele
     if (vertex_map.find(w) == vertex_map.end()) {
       // Adiciona o vertice no vetor de vertices
-      this->vertices.push_back(num_vertices);
+      vertices.push_back(num_vertices);
       // Adiciona o vertice no map
       vertex_map[w] = num_vertices++;
     }
 
     // Adiciona a aresta no grafo (lista de adjacencia)
-    this->add_edge(vertex_map[v], vertex_map[w]);
+    addEdge(vertex_map[v], vertex_map[w], adj_list);
   }
 
-  this->num_vertices = num_vertices;
-
-  // // Ordena as listas de adjacencia
-  // for (int i = 0; i < this->num_vertices; i++) {
-  //   sort(this->adj_list[i].begin(), this->adj_list[i].end());
-  // }
+  // Ordena as listas de adjacencia
+  for (int i = 0; i < num_vertices; i++) {
+    sort(adj_list[i].begin(), adj_list[i].end());
+  }
 
   file.close();
-
 }
 
-// Adiciona uma aresta no grafo
-void Graph::add_edge(long unsigned int v, long unsigned int u) {
+void addEdge(long unsigned int v, long unsigned int u, vector<vector<int>> &adj_list){
 
   // Como os vértices são indexados de 0 a n-1, o tamanho do vetor de adjacencia
   // é o maior vértice + 1
 
-  long unsigned int size = this->adj_list.size();
+  long unsigned int size = adj_list.size();
 
   // Caso o vertice v nao exista, adiciona a lista de adjacencia dele
   if (size <= v) {
-    this->adj_list.push_back(vector<int>());
+    adj_list.push_back(vector<int>());
   }
 
   // Caso o vertice u nao exista, adiciona a lista de adjacencia dele
   if (size <= u) {
-    this->adj_list.push_back(vector<int>());
+    adj_list.push_back(vector<int>());
   }
 
   // Adiciona o vértice u na lista de adjacencia de v
-  if (find(this->adj_list[v].begin(), this->adj_list[v].end(), u) ==
-      this->adj_list[v].end()) {
-    this->adj_list[v].push_back(u);
+  if (find(adj_list[v].begin(), adj_list[v].end(), u) ==
+      adj_list[v].end()) {
+    adj_list[v].push_back(u);
   }
 
   // Adiciona o vértice v na lista de adjacencia de u
-  if (find(this->adj_list[u].begin(), this->adj_list[u].end(), v) ==
-      this->adj_list[u].end()) {
-    this->adj_list[u].push_back(v);
+  if (find(adj_list[u].begin(), adj_list[u].end(), v) ==
+      adj_list[u].end()) {
+    adj_list[u].push_back(v);
   }
 }
 
-void Graph::copyToDevice(){
-  cudaMalloc(&this->d_verticesArr, this->num_vertices * sizeof(int));
-  cudaMalloc(&this->d_adj_list, this->num_vertices * sizeof(int*));
-
-  cudaMemcpy(this->d_verticesArr, this->h_verticesArr, this->num_vertices * sizeof(int), cudaMemcpyHostToDevice);
-
-  for (int i = 0; i < this->num_vertices; i++) {
-    int size = this->adj_list[i].size();
-    cudaMalloc(&this->d_adj_list[i], size * sizeof(int));
-    cudaMemcpy(this->d_adj_list[i], this->h_adj_list[i], size * sizeof(int), cudaMemcpyHostToDevice);
+int isNeighbor(int v, int vizinho, vector<vector<int>> &adj_list){
+  // Como as listas de adjacencia estão ordenadas, é possível fazer uma busca
+  // binária
+  if (binary_search(adj_list[v].begin(), adj_list[v].end(), vizinho)) {
+    return 1;
   }
+  return 0;
 }
 
-void Graph::startCliques(){
-  this->h_cliques = new int*[this->num_vertices];
-  for(int i = 0; i < this->num_vertices; i++){
-    this->h_cliques[i] = new int[1];
-    this->h_cliques[i][0] = this->h_verticesArr[i];
-  }
-
-  cudaMalloc(&this->d_cliques, this->num_vertices * sizeof(int*));
-  for(int i = 0; i < this->num_vertices; i++){
-    cudaMalloc(&this->d_cliques[i], sizeof(int));
-    cudaMemcpy(this->d_cliques[i], this->h_cliques[i], sizeof(int), cudaMemcpyHostToDevice);
-  }
-}
-
-void Graph::convertToArrays(){
-  this->h_verticesArr = new int[this->num_vertices];
-  this->h_adj_list = new int*[this->num_vertices];
-
-  for (int i = 0; i < this->num_vertices; i++) {
-    this->h_verticesArr[i] = this->vertices[i];
-    int size = this->adj_list[i].size();
-    this->h_adj_list[i] = new int[size];
-    for (int j = 0; j < size; j++) {
-      this->h_adj_list[i][j] = this->adj_list[i][j];
+int connectToAll(vector<int> clique, int v, vector<vector<int>> &adj_list){
+  for (int vertex : clique) {
+    if (isNeighbor(vertex, v, adj_list) == 0) {
+      return 0;
     }
   }
+  return 1;
+}
+
+int isInClique(vector<int> clique, int v) {
+  for (int vertex : clique) {
+    if (vertex == v) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+int formsNewClique(vector<int> clique, int v, vector<vector<int>> &adj_list) {
+  // Para formar uma nova clique, o vértice v deve ser vizinho de todos os
+  // vértices da clique e não deve estar na clique
+  if (isInClique(clique, v) == 0 && connectToAll(clique, v, adj_list) == 1) {
+    return 1;
+  }
+  return 0;
 }
 
 
-void Graph::countCliques(int k, int num_vertices, int *d_cliques, int *d_verticesArr, int **d_adj_list){
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if(i < num_vertices){
-    
+void flatten(vector<vector<int>> &adj_list, vector<int> &flat_adj_list, vector<int> &offsets){
+  // Calcula o offset de cada vértice
+  offsets.push_back(0);
+  for (int i = 0; i < adj_list.size(); i++) {
+    offsets.push_back(offsets[i] + adj_list[i].size());
+  }
+
+  // Transforma a lista de adjacencia em um vetor
+  for (int i = 0; i < adj_list.size(); i++) {
+    flat_adj_list.insert(flat_adj_list.end(), adj_list[i].begin(), adj_list[i].end());
+  }
+}
+
+void toArray(vector<int> &v, int *arr){
+  for (int i = 0; i < v.size(); i++) {
+    arr[i] = v.at(i);
   }
 }

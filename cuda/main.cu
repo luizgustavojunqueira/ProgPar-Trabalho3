@@ -1,309 +1,264 @@
+#include "./cliques.cuh"
 #include <iostream>
-#include <sys/time.h>
-#include <thread>
-#include <time.h>
 #include <vector>
-#include <fstream>
 #include <map>
+#include <fstream>
 #include <algorithm>
 
 using namespace std;
 
-double read_timer() {
-  static int initialized = 0;
-  static struct timeval start;
-  struct timeval end;
-  if (!initialized) {
-    gettimeofday(&start, NULL);
-initialized = 1;
-  }
-  gettimeofday(&end, NULL);
-  return (end.tv_sec - start.tv_sec) + 1.0e-6 * (end.tv_usec - start.tv_usec);
-}
+__global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_adj_list_arr, int *offsets_arr, int *cliques){
+  int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
 
-double start_time, end_time; /* start and end times */
+  int filaIndex = atomicAdd(fila_index, 1);
+  int startVertex = fila[filaIndex];
 
-__global__ void countCliques(int **adj, int *fila, int *contagem, int k, int num_vertices){
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx >= num_vertices) return;
+  int clique[MAX_CLIQUE_SIZE];
+  clique[0] = startVertex;
 
-  int *clique_inicial = (int *)malloc(sizeof(int));
-  int **cliques = (int **)malloc(sizeof(int *));
-  int count = 0;
-  int num_cliques = 1;
+  int startIndex = thread_id * MAX_CLIQUES * MAX_CLIQUE_SIZE;
 
-  clique_inicial[0] = fila[idx];
-  cliques[0] = clique_inicial;
+  cliques[startIndex] = clique[0];
+  int qntCliques = 1;
+  int inicioCliques = 0;
 
-  int tamanho_da_fila = sizeof(fila) / sizeof(fila[0]);
+  while(qntCliques - inicioCliques >0){
+    // Indice da primeira clique das cliques dessa thread
+    int cliqueIndex = startIndex + inicioCliques * MAX_CLIQUE_SIZE;
+    // Move o inicio das cliques para a próxima clique
+    inicioCliques++;
 
-  printf(" 1Thread %d. Vertice inicial: %d. Tamanho da fila: %d. Vertice: %d. Num cliques: %d. \n", idx, fila[idx], sizeof(fila), fila[idx], num_cliques);
-
-  while(num_cliques > 0){
-    int *clique = cliques[num_cliques - 1];
-
-    printf(" 2Thread %d. Vertice inicial: %d. Tamanho da fila: %d. Vertice: %d. Num cliques: %d. \n", idx, fila[idx], sizeof(fila), clique[0], num_cliques);
-    num_cliques--;
-
-    int tamanho_clique = sizeof(*clique) / sizeof(int);
-
-    printf(" 3Thread %d. Tamanho do clique: %d\n", idx, tamanho_clique);
-
-    if(tamanho_clique == k){
-      printf(" 4Thread %d. Clique de tamanho %d encontrado. Vertice inicial: %d. Tamanho da fila: %d. Vertice: %d. Num cliques: %d. \n", idx, k, fila[idx],sizeof(fila), clique[0], num_cliques);
-      count++;
-      continue;
+    // Calcula o tamanho da clique atual
+    int cliqueSize = 0;
+    for(int i = 0; i < MAX_CLIQUE_SIZE; i++){
+      if(cliques[cliqueIndex + i] != -1){
+        cliqueSize++;
+      }
     }
 
-    int ultimo_vertice = clique[tamanho_clique - 1];
+    // Se a clique atual já tem o tamanho máximo, incrementa o contador e passa para a próxima clique
+    if(cliqueSize == MAX_CLIQUE_SIZE){
+      atomicAdd(count, 1);
+      continue;
+    }
+    
+    // Pega o último vértice da clique atual
+    int lastVertex = cliques[cliqueIndex + cliqueSize - 1];
 
-    printf(" 5Thread %d. Ultimo vertice: %d\n", idx, ultimo_vertice);
+    // Percorre os vértices da clique atual
+    for(int i = 0; i < cliqueSize; i++){
+      // Pega o vértice atual
+      int vertexAtual = cliques[cliqueIndex + i];
 
-    for(int i = 0; i < tamanho_clique; i++){
-      int vertice = clique[i];
+      // Percorre os vizinhos do vértice atual
+      for(int j = offsets_arr[vertexAtual]; j < offsets_arr[vertexAtual + 1]; j++){
+        // Pega o vizinho
+        int vizinho = flat_adj_list_arr[j];
 
-      printf(" 6Thread %d. Vertice: %d\n", idx, vertice);
+        // Se o vizinho for maior que o último vértice da clique
+        if(vizinho > lastVertex){
 
-      // Get the size of the neighborhood of the vertex
+          // Verifica se o vizinho já está na clique
+          bool isInClique = false;
 
-      int tamanho_vizinhanca = sizeof(*adj[vertice]) / sizeof(adj[vertice][0]);
 
-      printf(" 7Thread %d. Tamanho da vizinhança: %d. Do vertice %d.\n", idx, tamanho_vizinhanca, vertice);
-
-      for(int j = 0; j < tamanho_vizinhanca; j++){
-        int vizinho = adj[vertice][j];
-
-        if(vizinho > ultimo_vertice){
-
-          bool is_in_clique = false;
-
-          for(int l = 0; l < tamanho_clique; l++){
-            if(clique[l] == vizinho){
-              is_in_clique = true;
+          // Percorre os vértices da clique
+          for(int k = 0; k < cliqueSize; k++){
+            // Se o vizinho já está na clique
+            if(cliques[cliqueIndex + k] == vizinho){
+              isInClique = true;
               break;
             }
           }
 
-          if(!is_in_clique){
+          // Se o vizinho não está na clique
+          if(!isInClique){
 
-            int forms_clique = true;
+            // Verifica se o vizinho é vizinho de todos os vértices da clique
+            bool ehVizinhoDeTodos = true;
 
-            for(int l = 0; l < tamanho_clique; l++){
-              int vertice_clique = clique[l];
+            // Percorre os vértices da clique
+            for(int k = 0; k < cliqueSize; k++){
+              // Pega o vértice da clique
+              int vertexClique = cliques[cliqueIndex + k];
 
-              int tamanho_vizinhanca_clique = sizeof(*adj[vertice_clique]) / sizeof(int);
+              bool ehVizinho = false;
 
-              bool is_neighbor = false;
-
-              for(int m = 0; m < tamanho_vizinhanca_clique; m++){
-                if(adj[vertice_clique][m] == vizinho){
-                  is_neighbor = true;
+              // Percorre os vizinhos do vértice da clique
+              for(int l = offsets_arr[vertexClique]; l < offsets_arr[vertexClique + 1]; l++){
+                // Se o vizinho do vértice da clique for o vizinho
+                if(flat_adj_list_arr[l] == vizinho){
+                  ehVizinho = true;
                   break;
                 }
               }
 
-              if(!is_neighbor){
-                forms_clique = false;
+              // Se o vizinho não for vizinho de um dos vértices da clique, não é vizinho de todos
+              if(!ehVizinho){
+                ehVizinhoDeTodos = false;
                 break;
               }
             }
 
-            if(forms_clique){
-              int *nova_clique = (int *)malloc((tamanho_clique + 1) * sizeof(int));
+            // Se o vizinho for vizinho de todos os vértices da clique
+            if(ehVizinhoDeTodos){
 
-              for(int l = 0; l < tamanho_clique; l++){
-                nova_clique[l] = clique[l];
+              // Cria uma nova clique com o vizinho
+              int newClique[MAX_CLIQUE_SIZE];
+              for(int k = 0; k < cliqueSize; k++){
+                newClique[k] = cliques[cliqueIndex + k];
+              }
+              newClique[cliqueSize] = vizinho;
+
+              // add -1 to the end of the clique if it needs, considering MAX_CLIQUE_SIZE can change
+              for(int k = cliqueSize + 1; k < MAX_CLIQUE_SIZE; k++){
+                newClique[k] = -1;
               }
 
-              nova_clique[tamanho_clique] = vizinho;
+              // Verifica se a nova clique já existe
+              bool cliqueJaExiste = false;
 
-              num_cliques++;
+              // Percorre as cliques
+              for(int k = 0; k < qntCliques; k++){
+                // Pega a clique atual
+                int cliqueAtual[MAX_CLIQUE_SIZE];
+                for(int l = 0; l < MAX_CLIQUE_SIZE; l++){
+                  cliqueAtual[l] = cliques[startIndex + k * MAX_CLIQUE_SIZE + l];
+                }
 
-              int ** novo_cliques = (int **)malloc((num_cliques + 1) * sizeof(int *));
-              for(int l = 0; l < num_cliques; l++){
-                novo_cliques[l] = cliques[l];
+                // Verifica se a nova clique é igual a clique atual
+                bool saoIguais = true;
+                for(int l = 0; l < MAX_CLIQUE_SIZE; l++){
+                  if(newClique[l] != cliqueAtual[l]){
+                    saoIguais = false;
+                    break;
+                  }
+                }
+
+                // Se a nova clique é igual a clique atual, a nova clique já existe
+                if(saoIguais){
+                  cliqueJaExiste = true;
+                  break;
+                }
               }
 
-              novo_cliques[num_cliques] = nova_clique;
+              if(!cliqueJaExiste){
+                // Adiciona a nova clique
+                for(int k = 0; k < MAX_CLIQUE_SIZE; k++){
+                  cliques[startIndex + qntCliques * MAX_CLIQUE_SIZE + k] = newClique[k];
+                }
+              }
 
-              free(cliques);
-
-              cliques = novo_cliques;
-
+              qntCliques++;
             }
           }
         }
       }
     }
   }
-
-  atomicAdd(contagem, count);
-
-  for(int i = 0; i < num_cliques; i++){
-    free(cliques[i]);
-  }
-
-  free(cliques);
 }
 
-void add_edge(long unsigned int v, long unsigned int u, vector<vector<int>> &adj_list) {
+int main(int argc, char *argv[]){
 
-  long unsigned int size = adj_list.size();
-
-  // Caso o vertice v nao exista, adiciona a lista de adjacencia dele
-  if (size <= v) {
-    adj_list.push_back(vector<int>());
-  }
-
-  // Caso o vertice u nao exista, adiciona a lista de adjacencia dele
-  if (size <= u) {
-    adj_list.push_back(vector<int>());
-  }
-
-  // Adiciona o vértice u na lista de adjacencia de v
-  if (find(adj_list[v].begin(), adj_list[v].end(), u) ==
-      adj_list[v].end()) {
-    adj_list[v].push_back(u);
-  }
-
-  // Adiciona o vértice v na lista de adjacencia de u
-  if (find(adj_list[u].begin(), adj_list[u].end(), v) ==
-      adj_list[u].end()) {
-    adj_list[u].push_back(v);
-  }
-}
-
-int main(int argc, char *argv[]) {
-
-  if (argc < 3) {
-    cout << "Usage: ./main <filename> <k>" << endl;
+  if (argc < 2){
+    cout << "Usage: " << argv[0] << " <input_file>" << endl;
     return 1;
   }
 
+  cout << "Usando valor de MAX_CLIQUE_SIZE = " << MAX_CLIQUE_SIZE << endl;
+  cout << "Usando valor de MAX_CLIQUES = " << MAX_CLIQUES << endl;
+  cout << "Caso deseje alterar, altere os valores das constantes MAX_CLIQUE_SIZE e MAX_CLIQUES no arquivo cliques.cuh" << endl;
+
   string filename = argv[1];
-  int k = atoi(argv[2]);
 
   int num_vertices = 0;
-
   vector<int> vertices;
   vector<vector<int>> adj_list;
-  
-  ifstream file(filename);
-  map<int, int> vertex_map;
 
-  int v, w;
-  // Le uma aresta do arquivo
-  while (file >> v >> w) {
+  readGraph(filename, adj_list, num_vertices);
 
-    // Caso o vertice v nao esteja no map, adiciona ele
-    if (vertex_map.find(v) == vertex_map.end()) {
-      // Adiciona o vertice no vetor de vertices
-      vertices.push_back(num_vertices);
+  vector<int> flat_adj_list;
+  vector<int> offsets;
 
-      // Adiciona o vertice no map
-      vertex_map[v] = num_vertices++;
-    }
+  flatten(adj_list, flat_adj_list, offsets);
 
-    // Caso o vertice w nao esteja no map, adiciona ele
-    if (vertex_map.find(w) == vertex_map.end()) {
-      // Adiciona o vertice no vetor de vertices
-      vertices.push_back(num_vertices);
-      // Adiciona o vertice no map
-      vertex_map[w] = num_vertices++;
-    }
+  int *flat_adj_list_arr = (int *)malloc(flat_adj_list.size() * sizeof(int));
+  toArray(flat_adj_list, flat_adj_list_arr);
 
-    // Adiciona a aresta no grafo (lista de adjacencia)
-    add_edge(vertex_map[v], vertex_map[w], adj_list);
-  }
+  int *offsets_arr = (int *)malloc(offsets.size() * sizeof(int));
+  toArray(offsets, offsets_arr);
 
-
-  // Ordena as listas de adjacencia
-  for (int i = 0; i <num_vertices; i++) {
-    sort(adj_list[i].begin(), adj_list[i].end());
-  }
-  
-  cout << "Graph initialized" << endl;
-
-  int *fila_cliques;
-  int **adj_listArr;
-
-  fila_cliques = (int *)malloc(num_vertices * sizeof(int));
-  adj_listArr = (int **)malloc(num_vertices * sizeof(int *));
-
-  for (int i = 0; i < num_vertices; i++) {
-    fila_cliques[i] = vertices[i];
-    adj_listArr[i] = (int *)malloc(adj_list[i].size() * sizeof(int));
-  }
-
-  cout << "Transformed adj_list vector to array" << endl;
-
-  int *device_fila_cliques;
-  int **device_adj_list;
-  int *device_row_ptr[num_vertices];
-
-  cout << "Starting cudaMalloc" << endl;
-
-  // Aloca memória para cada linha
-  for(int i = 0; i < num_vertices; i++){
-    cudaMalloc((void**)&device_row_ptr[i], adj_list[i].size() * sizeof(int));
-
-    cout << "Copying row " << i << " to device" << endl;
-
-    cudaMemcpy(device_row_ptr[i], adj_listArr[i], adj_list[i].size() * sizeof(int), cudaMemcpyHostToDevice);
-  }
-
-  cout << "Finished copying rows to device" << endl;
-
-  cudaMalloc((void **)&device_adj_list, num_vertices * sizeof(int *));
-
-  cudaMemcpy(device_adj_list, device_row_ptr, num_vertices * sizeof(int *), cudaMemcpyHostToDevice);
-
-  cout << "Finished copying adj_list to device" << endl;
-
-  cout << "Copying fila_cliques to device" << endl;
-
-  cudaMalloc(&device_fila_cliques, num_vertices * sizeof(int));
-
-  cudaMemcpy(device_fila_cliques, fila_cliques, num_vertices * sizeof(int), cudaMemcpyHostToDevice);
-
-  cout << "Finished copying fila_cliques to device" << endl;
-
-  int *d_contagem;
-  int contagem = 0;
-
-
-  cudaMalloc(&d_contagem, sizeof(int));
-  cudaMemcpy(d_contagem, &contagem, sizeof(int), cudaMemcpyHostToDevice);
-
-
-  cout << "Starting kernel" << endl;
-  start_time = read_timer();
-  
-  countCliques<<<(num_vertices + 255) / 256, 256>>>(device_adj_list, device_fila_cliques, &contagem, k, num_vertices);
-  cudaDeviceSynchronize();
-  
-  end_time = read_timer();
-
-  cudaMemcpy(&contagem, d_contagem, sizeof(int), cudaMemcpyDeviceToHost);
-
-  cout << "Finished kernel" << endl;
-
-  cout << "Tempo de execução: " << end_time - start_time << "s" << endl;
-
-  cout << "Número de cliques de tamanho " << k << ": " << contagem << endl;
-
-  // for (int i = 0; i < num_vertices; i++) {
-  //   free(fila_cliques[i]);
-  //   free(adj_list[i]);
+  // print adj list from array
+  // for(int i = 0; i < num_vertices; i++){
+  //   cout << i << ": ";
+  //   for(int j = offsets_arr[i]; j < offsets_arr[i+1]; j++){
+  //     cout << flat_adj_list_arr[j] << " ";
+  //   }
+  //   cout << endl;
   // }
   //
-  // free(fila_cliques);
-  // free(adj_list);
-  //
-  // cudaFree(d_fila_cliques);
-  // cudaFree(d_adj_list);
-  // cudaFree(d_contagem);
+
+  int *fila_h = (int *)malloc(num_vertices * sizeof(int));
+
+  for(int i = 0; i < num_vertices; i++){
+    fila_h[i] = i;
+  }
+
+    // Alloc and copy fila_h to device
+  int *fila_d;
+  cudaMalloc((void **)&fila_d, num_vertices * sizeof(int));
+  cudaMemcpy(fila_d, fila_h, num_vertices * sizeof(int), cudaMemcpyHostToDevice);
+
+  int fila_index_h = 0;
+  int *fila_index_d;
+  cudaMalloc((void **)&fila_index_d, sizeof(int));
+  cudaMemcpy(fila_index_d, &fila_index_h, sizeof(int), cudaMemcpyHostToDevice);
+
+  int count_h = 0;
+  int *count_d;
+  cudaMalloc((void **)&count_d, sizeof(int));
+  cudaMemcpy(count_d, &count_h, sizeof(int), cudaMemcpyHostToDevice);
+
+  int *flat_adj_list_arr_d;
+  cudaMalloc((void **)&flat_adj_list_arr_d, flat_adj_list.size() * sizeof(int));
+  cudaMemcpy(flat_adj_list_arr_d, flat_adj_list_arr, flat_adj_list.size() * sizeof(int), cudaMemcpyHostToDevice);
+
+  int *offsets_arr_d;
+  cudaMalloc((void **)&offsets_arr_d, offsets.size() * sizeof(int));
+  cudaMemcpy(offsets_arr_d, offsets_arr, offsets.size() * sizeof(int), cudaMemcpyHostToDevice);
+
+  int block_size = 64;
+  int amount_of_blocks = num_vertices / block_size;
+
+  int num_threads = block_size * amount_of_blocks; // basicamente o número de vértices, ta em outra variável só pq o código é meu
+
+  int *cliques_d;
+  // Aloca memória para as cliques
+  cudaMalloc((void **)&cliques_d, num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int));
+  cudaMemset(cliques_d, -1, num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int));
+
+  count_cliques<<<amount_of_blocks, block_size>>>(fila_d, fila_index_d, count_d, flat_adj_list_arr_d, offsets_arr_d, cliques_d);
+  cudaDeviceSynchronize();
+
+  cudaMemcpy(&count_h, count_d, sizeof(int), cudaMemcpyDeviceToHost);
+
+  int *cliques_h = (int *)malloc(num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int));
+  cudaMemcpy(cliques_h, cliques_d, num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int), cudaMemcpyDeviceToHost);
+
+  cout << "Number of cliques: " << count_h << endl;
+
+  free(flat_adj_list_arr);
+  free(offsets_arr);
+  free(fila_h);
+  free(cliques_h);
+  
+  cudaFree(fila_d);
+  cudaFree(fila_index_d);
+  cudaFree(count_d);
+  cudaFree(flat_adj_list_arr_d);
+  cudaFree(offsets_arr_d);
+  cudaFree(cliques_d);
 
   return 0;
+
 }
