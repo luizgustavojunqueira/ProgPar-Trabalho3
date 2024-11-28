@@ -1,10 +1,9 @@
-CC = g++
-CFLAGS = -Wall -g -Wno-int-to-pointer-cast 
+CC = nvcc
 
 .PHONY: clean main
 
-main: clean main.cpp 
-	$(CC) $(CFLAGS) -o main main.cpp 
+main: clean main.cu cliques.cu 
+	$(CC) main.cu cliques.cu -o main
 clean:
 	rm -f *.o *.a *.so
 	rm -f main
