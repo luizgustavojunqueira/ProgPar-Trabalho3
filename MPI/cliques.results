@@ -16,3 +16,35 @@ dblp
 MPI 3-cliques: 2224385 Time: 16.6145s
 MPI 4-cliques: 16713192 Time: 124.566s
 MPI 5-cliques: 262663639 Time: 2419.13s
+ 
+==============================
+28/11/2024 13:44:49
+citeseer
+MPI 3-cliques: 1166 Time: 0.00676342s
+MPI 4-cliques: 255 Time: 0.00906282s
+MPI 5-cliques: 46 Time: 0.0096991s
+MPI 6-cliques: 4 Time: 0.00974165s
+ 
+ca_astroph
+ 
+dblp
+MPI 3-cliques: 2224385 Time: 6.96126s
+MPI 4-cliques: 16713192 Time: 111s
+ 
+==============================
+28/11/2024 13:55:09
+citeseer
+MPI 3-cliques: 1166 Time: 0.00662929s
+MPI 4-cliques: 255 Time: 0.00889626s
+MPI 5-cliques: 46 Time: 0.00974907s
+MPI 6-cliques: 4 Time: 0.00962585s
+ 
+ca_astroph
+MPI 3-cliques: 1351441 Time: 4.31874s
+MPI 4-cliques: 9580415 Time: 72.9999s
+MPI 5-cliques: 64997961 Time: 870.196s
+ 
+dblp
+MPI 3-cliques: 2224385 Time: 11.7012s
+MPI 4-cliques: 16713192 Time: 109.017s
+MPI 5-cliques: 262663639 Time: 2532.76s

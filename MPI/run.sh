@@ -13,7 +13,7 @@ echo "citeseer" >> cliques.results
 for k in 3 4 5 6
 do
   echo "Executando para k = $k"
-  mpirun -use-hwthread-cpus ./main ../graph_datasets/citeseer.edgelist $k >> cliques.results
+  mpirun -np 4 ./main ../graph_datasets/citeseer.edgelist $k >> cliques.results
 done
 
 
@@ -23,7 +23,7 @@ echo "ca_astroph" >> cliques.results
 for k in 3 4 5
 do
   echo "Executando para k = $k"
-  mpirun -use-hwthread-cpus ./main ../graph_datasets/ca_astroph.edgelist $k >> cliques.results
+  mpirun -np 4 ./main ../graph_datasets/ca_astroph.edgelist $k >> cliques.results
 done
 
 echo " " >> cliques.results
@@ -32,7 +32,7 @@ echo "dblp" >> cliques.results
 for k in 3 4 5
 do
   echo "Executando para k = $k"
-  mpirun -use-hwthread-cpus ./main ../graph_datasets/dblp.edgelist $k >> cliques.results
+  mpirun -np 4 ./main ../graph_datasets/dblp.edgelist $k >> cliques.results
 done
 
 
