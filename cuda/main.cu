@@ -1,9 +1,4 @@
 #include "./cliques.cuh"
-#include <iostream>
-#include <vector>
-#include <map>
-#include <fstream>
-#include <algorithm>
 
 double read_timer() {
   static int initialized = 0;
@@ -21,8 +16,21 @@ double start_time, end_time; /* start and end times */
 
 using namespace std;
 
-__global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_adj_list_arr, int *offsets_arr, int *cliques){
+__global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_adj_list_arr, int *offsets_arr, int *thread_mem, int *thread_mem_offsets, int num_thread_mem){
   int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+
+  int mem_space = -1;
+
+  for(int i = 0; i < num_thread_mem; i++){
+    if(atomicCAS(&thread_mem[i], 0, 1) == 0){
+      mem_space = i;
+      break;
+    }
+  }
+
+  if(mem_space == -1){
+    printf("ERRO: Thread %d, não conseguiu espaço para suas cliques\n", thread_id);
+  }
 
   int filaIndex = atomicAdd(fila_index, 1);
   int startVertex = fila[filaIndex];
@@ -30,22 +38,25 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
   int clique[MAX_CLIQUE_SIZE];
   clique[0] = startVertex;
 
-  int startIndex = thread_id * MAX_CLIQUES * MAX_CLIQUE_SIZE;
+  int startCliquesMemIndex = thread_mem_offsets[thread_id] + 1;
+  thread_mem[startCliquesMemIndex - 1] = 1;
 
-  cliques[startIndex] = clique[0];
+  thread_mem[startCliquesMemIndex] = clique[0];
   int qntCliques = 1;
   int inicioCliques = 0;
 
+  boolean filled = false;
+
   while(qntCliques - inicioCliques >0){
     // Indice da primeira clique das cliques dessa thread
-    int cliqueIndex = startIndex + inicioCliques * MAX_CLIQUE_SIZE;
+    int cliqueIndex = startCliquesMemIndex + inicioCliques * MAX_CLIQUE_SIZE;
     // Move o inicio das cliques para a próxima clique
     inicioCliques++;
 
     // Calcula o tamanho da clique atual
     int cliqueSize = 0;
     for(int i = 0; i < MAX_CLIQUE_SIZE; i++){
-      if(cliques[cliqueIndex + i] != -1){
+      if(thread_mem[cliqueIndex + i] != -1){
         cliqueSize++;
       }
     }
@@ -57,12 +68,12 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
     }
     
     // Pega o último vértice da clique atual
-    int lastVertex = cliques[cliqueIndex + cliqueSize - 1];
+    int lastVertex = thread_mem[cliqueIndex + cliqueSize - 1];
 
     // Percorre os vértices da clique atual
     for(int i = 0; i < cliqueSize; i++){
       // Pega o vértice atual
-      int vertexAtual = cliques[cliqueIndex + i];
+      int vertexAtual = thread_mem[cliqueIndex + i];
 
       // Percorre os vizinhos do vértice atual
       for(int j = offsets_arr[vertexAtual]; j < offsets_arr[vertexAtual + 1]; j++){
@@ -79,7 +90,7 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
           // Percorre os vértices da clique
           for(int k = 0; k < cliqueSize; k++){
             // Se o vizinho já está na clique
-            if(cliques[cliqueIndex + k] == vizinho){
+            if(thread_mem[cliqueIndex + k] == vizinho){
               isInClique = true;
               break;
             }
@@ -94,7 +105,7 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
             // Percorre os vértices da clique
             for(int k = 0; k < cliqueSize; k++){
               // Pega o vértice da clique
-              int vertexClique = cliques[cliqueIndex + k];
+              int vertexClique = thread_mem[cliqueIndex + k];
 
               bool ehVizinho = false;
 
@@ -120,7 +131,7 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
               // Cria uma nova clique com o vizinho
               int newClique[MAX_CLIQUE_SIZE];
               for(int k = 0; k < cliqueSize; k++){
-                newClique[k] = cliques[cliqueIndex + k];
+                newClique[k] = thread_mem[cliqueIndex + k];
               }
               newClique[cliqueSize] = vizinho;
 
@@ -137,7 +148,7 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
                 // Pega a clique atual
                 int cliqueAtual[MAX_CLIQUE_SIZE];
                 for(int l = 0; l < MAX_CLIQUE_SIZE; l++){
-                  cliqueAtual[l] = cliques[startIndex + k * MAX_CLIQUE_SIZE + l];
+                  cliqueAtual[l] = thread_mem[startCliquesMemIndex + k * MAX_CLIQUE_SIZE + l];
                 }
 
                 // Verifica se a nova clique é igual a clique atual
@@ -157,9 +168,14 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
               }
 
               if(!cliqueJaExiste){
+                if(startCliquesMemIndex + qntCliques * MAX_CLIQUE_SIZE + MAX_CLIQUE_SIZE >= (startCliquesMemIndex + MAX_CLIQUES * MAX_CLIQUE_SIZE)){
+                  printf("ERRO: Thread %d, encheu o seu espaço de cliques, parando para evitar de usar memória de outra thread\n", thread_id);
+                  filled = true;
+                  break;
+                }
                 // Adiciona a nova clique
                 for(int k = 0; k < MAX_CLIQUE_SIZE; k++){
-                  cliques[startIndex + qntCliques * MAX_CLIQUE_SIZE + k] = newClique[k];
+                  thread_mem[startCliquesMemIndex + qntCliques * MAX_CLIQUE_SIZE + k] = newClique[k];
                 }
               }
 
@@ -167,9 +183,26 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
             }
           }
         }
+        if(filled){
+          break;
+        }
+      }
+
+      if(filled){
+        break;
       }
     }
+
+    if(filled){
+      break;
+    }
   }
+
+  for(int i = 0; i < MAX_CLIQUES * MAX_CLIQUE_SIZE; i++){
+    thread_mem[mem_space + i] = -1;
+  }
+
+  thread_mem[mem_space] = 0;
 }
 
 int main(int argc, char *argv[]){
@@ -246,20 +279,46 @@ int main(int argc, char *argv[]){
 
   int num_threads = block_size * amount_of_blocks; // basicamente o número de vértices, ta em outra variável só pq o código é meu
 
-  int *cliques_d;
-  // Aloca memória para as cliques
-  cudaMalloc((void **)&cliques_d, num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int));
-  cudaMemset(cliques_d, -1, num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int));
+  cout << "Number of threads: " << num_threads << endl;
 
-  count_cliques<<<amount_of_blocks, block_size>>>(fila_d, fila_index_d, count_d, flat_adj_list_arr_d, offsets_arr_d, cliques_d);
+  int num_thread_mem = num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE;
+
+  int *thread_mem_offsets_h;
+
+  thread_mem_offsets_h = (int *)malloc(num_threads * sizeof(int));
+
+  for(int i = 0; i < num_threads; i++){
+    thread_mem_offsets_h[i] = i * MAX_CLIQUES * MAX_CLIQUE_SIZE;
+  }
+
+  int *thread_mem_offsets_d;
+  cudaMalloc((void **)&thread_mem_offsets_d, num_threads * sizeof(int));
+  cudaMemcpy(thread_mem_offsets_d, thread_mem_offsets_h, num_threads * sizeof(int), cudaMemcpyHostToDevice);
+
+  int *thread_mem_h = (int *)malloc(( num_threads + num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE ) * sizeof(int));
+
+  memset(thread_mem_h, -1, ( num_threads + num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE ) * sizeof(int));
+
+  for(int i = 0; i < num_threads; i++){
+    thread_mem_h[thread_mem_offsets_h[i] + i] = 0;
+  }
+
+  int *thread_mem_d;
+  // Aloca memória para as cliques
+  cudaMalloc((void **)&thread_mem_d, ( num_threads + num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE ) * sizeof(int));
+  cudaMemcpy(thread_mem_d, thread_mem_h, ( num_threads + num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE ) * sizeof(int), cudaMemcpyHostToDevice);
+
   start_time = read_timer();
+
+  count_cliques<<<amount_of_blocks, block_size>>>(fila_d, fila_index_d, count_d, flat_adj_list_arr_d, offsets_arr_d, thread_mem_d, thread_mem_offsets_d, num_thread_mem);
   cudaDeviceSynchronize();
 
   end_time = read_timer();
+
   cudaMemcpy(&count_h, count_d, sizeof(int), cudaMemcpyDeviceToHost);
 
   int *cliques_h = (int *)malloc(num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int));
-  cudaMemcpy(cliques_h, cliques_d, num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int), cudaMemcpyDeviceToHost);
+  cudaMemcpy(cliques_h, thread_mem_d, num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int), cudaMemcpyDeviceToHost);
 
   cout << "Number of cliques: " << count_h << endl;
   cout << "Time: " << end_time - start_time << " seconds" << endl;
@@ -274,7 +333,7 @@ int main(int argc, char *argv[]){
   cudaFree(count_d);
   cudaFree(flat_adj_list_arr_d);
   cudaFree(offsets_arr_d);
-  cudaFree(cliques_d);
+  cudaFree(thread_mem_d);
 
   return 0;
 

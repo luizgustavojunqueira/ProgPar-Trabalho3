@@ -1,15 +1,14 @@
 #include <set>
 #include <string>
 #include <vector>
-#include <queue>
 #include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <mpi.h>
 #include <sys/time.h>
+#include <time.h>
 
-#define MAX_CLIQUE_SIZE 4
+#define MAX_CLIQUE_SIZE 3
 #define MAX_CLIQUES 15000
 
 using namespace std;
