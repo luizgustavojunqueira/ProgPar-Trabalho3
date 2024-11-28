@@ -34,9 +34,9 @@ int main(int argc, char *argv[]) {
     vector<int> flat_adj_list;
     vector<int> row_sizes;
 
-    for (int i = 0; i < num_vertices; i++) {
+    for ( int i = 0; i < num_vertices; i++) {
       row_sizes.push_back(adj_list[i].size());
-      for (int j = 0; j < adj_list[i].size(); j++) {
+      for (long unsigned int j = 0; j < adj_list[i].size(); j++) {
         flat_adj_list.push_back(adj_list[i][j]);
       }
     }
@@ -59,8 +59,6 @@ int main(int argc, char *argv[]) {
     for(int i = 0; i < num_vertices; i++){
       fila.push(i);
     }
-
-    cout << "Fila iniciada, começando a distribuir trabalho e contando tempo" << endl;
 
     // Inicia a contagem de tempo
     start = MPI_Wtime();
@@ -94,11 +92,9 @@ int main(int argc, char *argv[]) {
       MPI_Send(&v, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
     }
 
-    cout << "Total number of cliques: " << count << endl;
-
     end = MPI_Wtime();
 
-    cout << "Time: " << end - start << "s" << endl;
+    cout << "MPI " << k << "-cliques: " << count << " Time: " << end - start << "s" << endl;
 
   }else{
 
@@ -121,7 +117,7 @@ int main(int argc, char *argv[]) {
 
     // Convertendo a lista de adjacência de volta para a forma original para ficar mais fácil de trabalhar
     int index = 0;
-    for(int i = 0; i < row_sizes.size(); i++){
+    for(long unsigned int i = 0; i < row_sizes.size(); i++){
       vector<int> row;
       for(int j = 0; j < row_sizes[i]; j++){
         row.push_back(flat_adj_list[index]);
@@ -158,7 +154,7 @@ int main(int argc, char *argv[]) {
         vector<int> clique_atual = *cliques.begin();
         cliques.erase(clique_atual);
 
-        if (clique_atual.size() == k) {
+        if ((int)clique_atual.size() == k) {
           clique_count += 1;
           continue;
         }

@@ -1,0 +1,13 @@
+citeseer
+3-cliques: 0.004118 seconds 
+4-cliques: 0.004237 seconds 
+5-cliques: 0.005378 seconds
+6-cliques: 0.008655 seconds
+
+ca_astroph
+3-cliques: 22.8733 seconds. Precisa de pelo menos 17215 cliques para funcionar
+4-cliques: Não foi possível executar devido à falta de memória
+
+
+dblp
+Não foi possível executar devido à falta de memória.

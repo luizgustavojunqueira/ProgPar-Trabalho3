@@ -9,8 +9,8 @@
 #include <mpi.h>
 #include <sys/time.h>
 
-#define MAX_CLIQUE_SIZE 4
-#define MAX_CLIQUES 15000
+#define MAX_CLIQUE_SIZE 3
+#define MAX_CLIQUES 1500 
 
 using namespace std;
 

@@ -265,6 +265,11 @@ int main(int argc, char *argv[]){
 
   int num_threads = block_size * amount_of_blocks; // basicamente o número de vértices, ta em outra variável só pq o código é meu
 
+  long unsigned int num_bytes = num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int);
+  float numMB = num_bytes / 1024.0 / 1024.0 ;
+
+  cout << "MB needed: " << numMB << endl;
+
   int *cliques_d;
   // Aloca memória para as cliques
   cudaMalloc((void **)&cliques_d, num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int));

@@ -1,0 +1,18 @@
+ 
+==============================
+28/11/2024 10:51:06
+citeseer
+MPI 3-cliques: 1166 Time: 0.00642508s
+MPI 4-cliques: 255 Time: 0.00866247s
+MPI 5-cliques: 46 Time: 0.00959877s
+MPI 6-cliques: 4 Time: 0.00919106s
+ 
+ca_astroph
+MPI 3-cliques: 1351440 Time: 4.66255s
+MPI 4-cliques: 9580415 Time: 80.1282s
+MPI 5-cliques: 64997961 Time: 932.287s
+ 
+dblp
+MPI 3-cliques: 2224385 Time: 16.6145s
+MPI 4-cliques: 16713192 Time: 124.566s
+MPI 5-cliques: 262663639 Time: 2419.13s
