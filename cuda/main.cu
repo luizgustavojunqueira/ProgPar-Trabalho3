@@ -36,6 +36,8 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
   int qntCliques = 1;
   int inicioCliques = 0;
 
+  bool filled = false;
+
   while(qntCliques - inicioCliques >0){
     // Indice da primeira clique das cliques dessa thread
     int cliqueIndex = startIndex + inicioCliques * MAX_CLIQUE_SIZE;
@@ -158,6 +160,11 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
 
               if(!cliqueJaExiste){
                 // Adiciona a nova clique
+                if(startIndex + qntCliques * MAX_CLIQUE_SIZE + MAX_CLIQUE_SIZE >= (startIndex + MAX_CLIQUES * MAX_CLIQUE_SIZE)){
+                  printf("ERRO: Thread %d, encheu o seu espaço de cliques, parando para evitar de usar memória de outra thread. Ou seja, desconsiderando as cliques iniciadas pelo vértice %d\n", thread_id, startVertex);
+                  filled = true;
+                  break;
+                }
                 for(int k = 0; k < MAX_CLIQUE_SIZE; k++){
                   cliques[startIndex + qntCliques * MAX_CLIQUE_SIZE + k] = newClique[k];
                 }
@@ -167,7 +174,19 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
             }
           }
         }
+
+        if(filled){
+          break;
+        }
       }
+
+      if(filled){
+        break;
+      }
+    }
+
+    if(filled){
+      break;
     }
   }
 }
