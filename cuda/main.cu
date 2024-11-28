@@ -5,6 +5,20 @@
 #include <fstream>
 #include <algorithm>
 
+double read_timer() {
+  static int initialized = 0;
+  static struct timeval start;
+  struct timeval end;
+  if (!initialized) {
+    gettimeofday(&start, NULL);
+    initialized = 1;
+  }
+  gettimeofday(&end, NULL);
+  return (end.tv_sec - start.tv_sec) + 1.0e-6 * (end.tv_usec - start.tv_usec);
+}
+
+double start_time, end_time; /* start and end times */
+
 using namespace std;
 
 __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_adj_list_arr, int *offsets_arr, int *cliques){
@@ -238,14 +252,17 @@ int main(int argc, char *argv[]){
   cudaMemset(cliques_d, -1, num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int));
 
   count_cliques<<<amount_of_blocks, block_size>>>(fila_d, fila_index_d, count_d, flat_adj_list_arr_d, offsets_arr_d, cliques_d);
+  start_time = read_timer();
   cudaDeviceSynchronize();
 
+  end_time = read_timer();
   cudaMemcpy(&count_h, count_d, sizeof(int), cudaMemcpyDeviceToHost);
 
   int *cliques_h = (int *)malloc(num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int));
   cudaMemcpy(cliques_h, cliques_d, num_threads * MAX_CLIQUES * MAX_CLIQUE_SIZE * sizeof(int), cudaMemcpyDeviceToHost);
 
   cout << "Number of cliques: " << count_h << endl;
+  cout << "Time: " << end_time - start_time << " seconds" << endl;
 
   free(flat_adj_list_arr);
   free(offsets_arr);
