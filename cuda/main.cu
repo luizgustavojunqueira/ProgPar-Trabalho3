@@ -45,7 +45,7 @@ __global__ void count_cliques(int *fila, int *fila_index, int *count, int *flat_
   int qntCliques = 1;
   int inicioCliques = 0;
 
-  boolean filled = false;
+  bool filled = false;
 
   while(qntCliques - inicioCliques >0){
     // Indice da primeira clique das cliques dessa thread
